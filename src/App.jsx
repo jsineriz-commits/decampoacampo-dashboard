@@ -1,26 +1,108 @@
-import { useState, useMemo } from 'react'
-import { comerciales, zonas, tiposGasto, calcularTotales, formatCurrency } from './data/comerciales'
+import { useState, useMemo, useEffect } from 'react'
+
+const GOOGLE_SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTe01FxUFIrW5g5FGQnFBHpxg3gjgg_zmTL0fkSX_iVFgzTiw3LmLd7VTQmx16RmuxSXZR6uoryXvP9/pub?output=csv';
 
 function App() {
+    const [data, setData] = useState([])
+    const [loading, setLoading] = useState(true)
     const [filtroZona, setFiltroZona] = useState('Todas')
-    const [filtroTipo, setFiltroTipo] = useState('todos')
     const [busqueda, setBusqueda] = useState('')
 
-    // Filtrar comerciales
-    const comercialesFiltrados = useMemo(() => {
-        return comerciales.filter(c => {
-            const coincideZona = filtroZona === 'Todas' || c.zona === filtroZona
-            const coincideBusqueda = c.nombre.toLowerCase().includes(busqueda.toLowerCase())
-            return coincideZona && coincideBusqueda
-        })
-    }, [filtroZona, busqueda])
+    // Función para formatear moneda
+    const formatCurrency = (value) => {
+        return new Intl.NumberFormat('es-AR', {
+            style: 'currency',
+            currency: 'ARS',
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 0
+        }).format(value);
+    };
 
-    // Calcular totales
-    const totales = useMemo(() => calcularTotales(comercialesFiltrados), [comercialesFiltrados])
+    useEffect(() => {
+        const fetchData = async () => {
+            try {
+                const response = await fetch(GOOGLE_SHEET_URL);
+                const csvText = await response.text();
+
+                // Simple CSV Parser para los datos de DeCampoACampo
+                const lines = csvText.split(/\r?\n/);
+                const headers = lines[0].split(',');
+
+                const rawRows = lines.slice(1).map(line => {
+                    // Regex para manejar los campos con comillas y comas (como "30,000")
+                    const matches = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g);
+                    if (!matches) return null;
+
+                    return {
+                        usuario: matches[3]?.replace(/"/g, '') || matches[8]?.replace(/"/g, ''),
+                        importe: parseFloat(matches[5]?.replace(/"/g, '').replace(/,/g, '')) || 0,
+                        categoria: matches[9]?.replace(/"/g, '') || 'Otros',
+                        estado: matches[7]?.replace(/"/g, '')
+                    };
+                }).filter(r => r && r.estado === 'CONFIRMADA');
+
+                // Agrupar por usuario
+                const groupedByUser = rawRows.reduce((acc, row) => {
+                    if (!acc[row.usuario]) {
+                        acc[row.usuario] = {
+                            nombre: row.usuario,
+                            zona: 'General', // Por ahora lo ponemos general ya que no viene en el CSV
+                            gastos: { combustible: 0, comidas: 0, hoteles: 0, otros: 0 },
+                            totalMes: 0
+                        };
+                    }
+
+                    const cat = row.categoria.toLowerCase();
+                    if (cat.includes('combustible')) acc[row.usuario].gastos.combustible += row.importe;
+                    else if (cat.includes('comida')) acc[row.usuario].gastos.comidas += row.importe;
+                    else if (cat.includes('hotel')) acc[row.usuario].gastos.hoteles += row.importe;
+                    else acc[row.usuario].gastos.otros += row.importe;
+
+                    acc[row.usuario].totalMes += row.importe;
+                    return acc;
+                }, {});
+
+                setData(Object.values(groupedByUser));
+                setLoading(false);
+            } catch (error) {
+                console.error('Error cargando datos:', error);
+                setLoading(false);
+            }
+        };
+
+        fetchData();
+    }, []);
+
+    const comercialesFiltrados = useMemo(() => {
+        return data.filter(c => {
+            const coincideBusqueda = c.nombre.toLowerCase().includes(busqueda.toLowerCase())
+            return coincideBusqueda
+        });
+    }, [data, busqueda])
+
+    const totales = useMemo(() => {
+        return comercialesFiltrados.reduce((acc, comercial) => {
+            acc.total += comercial.totalMes;
+            acc.combustible += comercial.gastos.combustible;
+            acc.comidas += comercial.gastos.comidas;
+            acc.hoteles += comercial.gastos.hoteles;
+            return acc;
+        }, { total: 0, combustible: 0, comidas: 0, hoteles: 0 });
+    }, [comercialesFiltrados]);
+
+    if (loading) {
+        return (
+            <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', background: '#ffffff', color: '#1e3a8a', fontFamily: 'Inter' }}>
+                <div style={{ textAlign: 'center' }}>
+                    <h2>Cargando Dashboard de DeCampoACampo...</h2>
+                    <p>Conectando con Google Sheets en vivo</p>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="app-container">
-            {/* Sidebar */}
             <aside className="sidebar">
                 <div className="logo">
                     <div className="logo-icon">🐄</div>
@@ -31,187 +113,98 @@ function App() {
                 </div>
 
                 <ul className="nav-menu">
-                    <li className="nav-item active">
-                        <span className="nav-icon">📊</span>
-                        <span>Dashboard</span>
-                    </li>
-                    <li className="nav-item">
-                        <span className="nav-icon">👥</span>
-                        <span>Comerciales</span>
-                    </li>
-                    <li className="nav-item">
-                        <span className="nav-icon">📋</span>
-                        <span>Reportes</span>
-                    </li>
-                    <li className="nav-item">
-                        <span className="nav-icon">⚙️</span>
-                        <span>Configuración</span>
-                    </li>
+                    <li className="nav-item active">📊 <span>Dashboard en Vivo</span></li>
+                    <li className="nav-item">👥 <span>Asociados</span></li>
+                    <li className="nav-item">📋 <span>Reportes</span></li>
+                    <li className="nav-item">⚙️ <span>Configuración</span></li>
                 </ul>
             </aside>
 
-            {/* Contenido Principal */}
             <main className="main-content">
-                {/* Header */}
                 <header className="page-header">
-                    <h1 className="page-title">Dashboard de Gastos</h1>
-                    <p className="page-subtitle">
-                        Visualiza los costos y gastos de los asociados comerciales
-                    </p>
+                    <h1 className="page-title">Panel de Control de Gastos</h1>
+                    <p className="page-subtitle">Sincronizado automáticamente con Google Sheets</p>
                 </header>
 
-                {/* Tarjetas de Estadísticas */}
                 <section className="stats-grid">
                     <div className="stat-card">
-                        <div className="stat-header">
-                            <div className="stat-icon total">💰</div>
-                        </div>
-                        <div className="stat-title">Total Gastos</div>
+                        <div className="stat-title">Gastos Totales (Confirmados)</div>
                         <div className="stat-value">{formatCurrency(totales.total)}</div>
-                        <div className="stat-change positive">
-                            <span>↑</span> {comercialesFiltrados.length} comerciales
-                        </div>
                     </div>
-
                     <div className="stat-card">
-                        <div className="stat-header">
-                            <div className="stat-icon fuel">⛽</div>
-                        </div>
-                        <div className="stat-title">Combustible</div>
+                        <div className="stat-title">Nafta / Combustible</div>
                         <div className="stat-value">{formatCurrency(totales.combustible)}</div>
-                        <div className="stat-change positive">
-                            <span>↑</span> 12% vs mes anterior
-                        </div>
                     </div>
-
                     <div className="stat-card">
-                        <div className="stat-header">
-                            <div className="stat-icon food">🍽️</div>
-                        </div>
-                        <div className="stat-title">Comidas</div>
+                        <div className="stat-title">Alimentación / Comidas</div>
                         <div className="stat-value">{formatCurrency(totales.comidas)}</div>
-                        <div className="stat-change negative">
-                            <span>↓</span> 3% vs mes anterior
-                        </div>
                     </div>
-
                     <div className="stat-card">
-                        <div className="stat-header">
-                            <div className="stat-icon hotel">🏨</div>
-                        </div>
-                        <div className="stat-title">Hoteles</div>
+                        <div className="stat-title">Hospedaje / Hoteles</div>
                         <div className="stat-value">{formatCurrency(totales.hoteles)}</div>
-                        <div className="stat-change positive">
-                            <span>↑</span> 8% vs mes anterior
-                        </div>
-                    </div>
-
-                    <div className="stat-card">
-                        <div className="stat-header">
-                            <div className="stat-icon health">🏥</div>
-                        </div>
-                        <div className="stat-title">Obra Social</div>
-                        <div className="stat-value">{formatCurrency(totales.obraSocial)}</div>
-                        <div className="stat-change positive">
-                            <span>—</span> Sin cambios
-                        </div>
                     </div>
                 </section>
 
-                {/* Filtros */}
                 <section className="filters-section">
-                    <div className="filters-title">Filtros y Búsqueda</div>
-                    <div className="filters-grid">
-                        <div className="filter-group">
-                            <label className="filter-label">Buscar comercial</label>
-                            <input
-                                type="text"
-                                className="filter-input"
-                                placeholder="Escribe un nombre..."
-                                value={busqueda}
-                                onChange={(e) => setBusqueda(e.target.value)}
-                            />
-                        </div>
-                        <div className="filter-group">
-                            <label className="filter-label">Zona Geográfica</label>
-                            <select
-                                className="filter-select"
-                                value={filtroZona}
-                                onChange={(e) => setFiltroZona(e.target.value)}
-                            >
-                                {zonas.map(zona => (
-                                    <option key={zona} value={zona}>{zona}</option>
-                                ))}
-                            </select>
-                        </div>
-                    </div>
+                    <div className="filters-title">Búsqueda Rápida</div>
+                    <input
+                        type="text"
+                        className="filter-input"
+                        style={{ width: '100%' }}
+                        placeholder="Buscar por nombre de asociado..."
+                        value={busqueda}
+                        onChange={(e) => setBusqueda(e.target.value)}
+                    />
                 </section>
 
-                {/* Resumen Visual por Zonas */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '2rem', marginBottom: '2rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '2rem' }}>
 
-                    {/* Tabla de Comerciales */}
-                    <section className="table-section" style={{ margin: 0 }}>
-                        <div className="table-header">
-                            <h2 className="table-title">Asociados en {filtroZona}</h2>
-                        </div>
-                        <div style={{ overflowX: 'auto' }}>
-                            <table className="data-table">
-                                <thead>
-                                    <tr>
-                                        <th>Nombre</th>
-                                        <th>Zona</th>
-                                        <th>Total Mes</th>
-                                        <th>Estado</th>
+                    <section className="table-section">
+                        <div className="table-header"><h2 className="table-title">Ranking de Gastos por Usuario</h2></div>
+                        <table className="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Usuario</th>
+                                    <th>Gasto Acumulado</th>
+                                    <th>Estado</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {comercialesFiltrados.map((c, i) => (
+                                    <tr key={i}>
+                                        <td><strong>{c.nombre}</strong></td>
+                                        <td className="amount">{formatCurrency(c.totalMes)}</td>
+                                        <td>
+                                            <span style={{
+                                                padding: '4px 8px', borderRadius: '4px', fontSize: '0.75rem',
+                                                background: c.totalMes > 500000 ? '#fef2f2' : '#f0fdf4',
+                                                color: c.totalMes > 500000 ? '#991b1b' : '#166534'
+                                            }}>
+                                                {c.totalMes > 500000 ? 'Revisar' : 'Ok'}
+                                            </span>
+                                        </td>
                                     </tr>
-                                </thead>
-                                <tbody>
-                                    {comercialesFiltrados.map(comercial => (
-                                        <tr key={comercial.id}>
-                                            <td><strong>{comercial.nombre}</strong></td>
-                                            <td><span className="zone-badge">{comercial.zona}</span></td>
-                                            <td className="amount">{formatCurrency(comercial.totalMes)}</td>
-                                            <td>
-                                                <span style={{
-                                                    padding: '4px 8px',
-                                                    borderRadius: '4px',
-                                                    fontSize: '0.75rem',
-                                                    background: comercial.totalMes > 300000 ? '#fef2f2' : '#f0fdf4',
-                                                    color: comercial.totalMes > 300000 ? '#991b1b' : '#166534'
-                                                }}>
-                                                    {comercial.totalMes > 300000 ? 'Revisar' : 'Aprobado'}
-                                                </span>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
+                                ))}
+                            </tbody>
+                        </table>
                     </section>
 
-                    {/* Gráfico de Gastos por Zona (CSS puro) */}
-                    <section className="table-section" style={{ padding: '1.5rem', margin: 0 }}>
-                        <h2 className="table-title" style={{ marginBottom: '1.5rem' }}>Gasto Acumulado por Zona</h2>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
-                            {zonas.filter(z => z !== 'Todas').map(zona => {
-                                const totalZona = comerciales
-                                    .filter(c => c.zona === zona)
-                                    .reduce((acc, curr) => acc + curr.totalMes, 0);
-                                const porcentaje = Math.min((totalZona / 500000) * 100, 100);
-
+                    <section className="table-section" style={{ padding: '1.5rem' }}>
+                        <h2 className="table-title" style={{ marginBottom: '1.5rem' }}>Visualización de Presupuesto</h2>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                            {comercialesFiltrados.slice(0, 5).map((c, i) => {
+                                const porcentaje = Math.min((c.totalMes / 1000000) * 100, 100);
                                 return (
-                                    <div key={zona}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '0.85rem' }}>
-                                            <span style={{ fontWeight: 500 }}>{zona}</span>
-                                            <span style={{ fontWeight: 700, color: '#1e3a8a' }}>{formatCurrency(totalZona)}</span>
+                                    <div key={i}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '0.9rem' }}>
+                                            <span>{c.nombre}</span>
+                                            <strong>{formatCurrency(c.totalMes)}</strong>
                                         </div>
-                                        <div style={{ width: '100%', height: '10px', background: '#f1f5f9', borderRadius: '5px', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
+                                        <div style={{ width: '100%', height: '12px', background: '#f1f5f9', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
                                             <div style={{
-                                                width: `${porcentaje}%`,
-                                                height: '100%',
+                                                width: `${porcentaje}%`, height: '100%',
                                                 background: 'linear-gradient(90deg, #1e3a8a, #3b82f6)',
-                                                borderRadius: '5px',
-                                                transition: 'width 1s ease-in-out'
+                                                borderRadius: '6px'
                                             }}></div>
                                         </div>
                                     </div>
