@@ -11,3 +11,4 @@ git push
 Write-Host "--- Todo listo ---" -ForegroundColor Green
 Write-Host "Tus datos privados han sido descargados y subidos a la web."
 Write-Host "Espera 30 segundos y refresca decampoacampo-dashboard.vercel.app"
+
