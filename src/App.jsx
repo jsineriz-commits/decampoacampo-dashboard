@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react'
 
-const GOOGLE_SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTe01FxUFIrW5g5FGQnFBHpxg3gjgg_zmTL0fkSX_iVFgzTiw3LmLd7VTQmx16RmuxSXZR6uoryXvP9/pub?output=csv';
+const LOCAL_DATA_URL = '/gastos_reales.csv';
 
 const CATEGORY_COLORS = {
     'Combustible': '#3b82f6',
@@ -59,7 +59,7 @@ function App() {
     }).format(val);
 
     useEffect(() => {
-        fetch(GOOGLE_SHEET_URL)
+        fetch(LOCAL_DATA_URL)
             .then(res => res.text())
             .then(csv => {
                 const lines = csv.split(/\r?\n/);
@@ -170,6 +170,12 @@ function App() {
     return (
         <div className="app-container" style={{ background: '#f8fafc' }}>
             <main className="main-content">
+                <header className="page-header" style={{ textAlign: 'center', marginBottom: '1.5rem', marginTop: '1rem' }}>
+                    <h1 className="page-title" style={{ color: '#00BFFF', fontSize: '2.2rem', fontWeight: '900', letterSpacing: '2px', textTransform: 'uppercase', margin: 0 }}>
+                        DE CAMPO A CAMPO
+                    </h1>
+                    <p className="page-subtitle" style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '4px', fontWeight: '600' }}>Sincronizado con Google Sheets</p>
+                </header>
 
                 {activeTab === 'tablero' && (
                     <>
@@ -220,7 +226,7 @@ function App() {
                                 </div>
                                 <div className="indicator-value">{rankingUsuarios.length}</div>
                                 <div style={{ color: '#64748b', fontSize: '0.75rem' }}>
-                                    en el período seleccionado
+                                    Personas con gastos este mes
                                 </div>
                             </div>
                         </div>
