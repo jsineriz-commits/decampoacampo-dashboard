@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react'
 
-const GOOGLE_SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTe01FxUFIrW5g5FGQnFBHpxg3gjgg_zmTL0fkSX_iVFgzTiw3LmLdY7VTQmx16RmuxSXZR6uoryXvP9/pub?output=csv';
+const GOOGLE_SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTe01FxUFIrW5g5FGQnFBHpxg3gjgg_zmTL0fkSX_iVFgzTiw3LmLd7VTQmx16RmuxSXZR6uoryXvP9/pub?output=csv';
 
 const CATEGORY_COLORS = {
     'Combustible': '#3b82f6',
@@ -9,62 +9,163 @@ const CATEGORY_COLORS = {
     'Service / Reparaciones Auto': '#f59e0b',
     'Comidas': '#8b5cf6',
     'Peajes': '#64748b',
-    'Hoteleria': '#ec4899'
+    'Hoteleria': '#ec4899',
+    'Servicios': '#06b6d4',
+    'Monotributo/Autonomos': '#14b8a6'
 };
+
+// CSV Parser robusto que maneja campos con comillas y comas internas
+function parseCSVLine(line) {
+    const result = [];
+    let current = '';
+    let inQuotes = false;
+
+    for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+
+        if (char === '"') {
+            inQuotes = !inQuotes;
+        } else if (char === ',' && !inQuotes) {
+            result.push(current.trim());
+            current = '';
+        } else {
+            current += char;
+        }
+    }
+    result.push(current.trim());
+    return result;
+}
+
+// Función para parsear montos como "1,120,580" o "30,000"
+function parseImporte(str) {
+    if (!str) return 0;
+    // Eliminar comillas y luego eliminar todas las comas
+    const clean = str.replace(/"/g, '').replace(/,/g, '');
+    const num = parseFloat(clean);
+    return isNaN(num) ? 0 : num;
+}
 
 function App() {
     const [rawData, setRawData] = useState([])
     const [loading, setLoading] = useState(true)
     const [activeTab, setActiveTab] = useState('tablero')
     const [busqueda, setBusqueda] = useState('')
+    const [mesSeleccionado, setMesSeleccionado] = useState('202506')
 
-    const formatCurrency = (val) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(val);
+    const formatCurrency = (val) => new Intl.NumberFormat('es-AR', {
+        style: 'currency',
+        currency: 'ARS',
+        maximumFractionDigits: 0
+    }).format(val);
 
     useEffect(() => {
-        fetch(GOOGLE_SHEET_URL).then(res => res.text()).then(csv => {
-            const lines = csv.split(/\r?\n/).slice(1);
-            const parsed = lines.map(line => {
-                const m = line.match(/(".*?"|[^",]+)(?=\s*,|\s*$)/g);
-                if (!m || m.length < 11) return null;
-                return {
-                    id: m[0],
-                    fecha: m[1],
-                    usuario: (m[8] || '').replace(/"/g, '').trim(),
-                    comercio: (m[4] || '').replace(/"/g, '').trim(),
-                    importe: parseFloat((m[5] || '0').replace(/"/g, '').replace(/,/g, '')) || 0,
-                    metodo: (m[6] || '').replace(/"/g, '').trim(),
-                    categoria: (m[9] || 'Otros').replace(/"/g, '').trim(),
-                    periodo: (m[10] || '').replace(/"/g, '').trim(),
-                    estado: (m[7] || '').replace(/"/g, '').trim()
-                };
-            }).filter(r => r && r.estado === 'CONFIRMADA' && r.usuario);
-            setRawData(parsed);
-            setLoading(false);
-        });
+        fetch(GOOGLE_SHEET_URL)
+            .then(res => res.text())
+            .then(csv => {
+                const lines = csv.split(/\r?\n/);
+                // Saltar el header
+                const dataLines = lines.slice(1).filter(line => line.trim());
+
+                const parsed = dataLines.map(line => {
+                    const cols = parseCSVLine(line);
+
+                    // Columnas según el CSV:
+                    // 0: ID Transaccion
+                    // 1: Fecha transaccion
+                    // 2: Fecha confirmacion
+                    // 3: Usuario
+                    // 4: Comercio
+                    // 5: Importe Total (con formato "30,000")
+                    // 6: Metodo de pago
+                    // 7: Estado transaccion
+                    // 8: Usuario normalizado
+                    // 9: Categoria normalizada
+                    // 10: Periodo normalizado
+
+                    const usuario = cols[8] || cols[3] || 'Sin Usuario';
+                    const importe = parseImporte(cols[5]);
+                    const estado = cols[7] || '';
+                    const categoria = cols[9] || 'Otros';
+                    const periodo = cols[10] || '';
+
+                    return {
+                        id: cols[0],
+                        fecha: cols[1],
+                        fechaConf: cols[2],
+                        usuarioOriginal: cols[3],
+                        usuario: usuario,
+                        comercio: cols[4] || '',
+                        importe: importe,
+                        metodo: cols[6] || '',
+                        estado: estado,
+                        categoria: categoria,
+                        periodo: periodo
+                    };
+                }).filter(r => r.estado === 'CONFIRMADA' && r.usuario);
+
+                console.log('Datos parseados:', parsed.length, 'registros');
+                console.log('Ejemplo:', parsed[0]);
+                setRawData(parsed);
+                setLoading(false);
+            })
+            .catch(err => {
+                console.error('Error:', err);
+                setLoading(false);
+            });
     }, []);
 
-    // Datos del mes actual (Enero 2026 - según la captura)
-    const dataActual = useMemo(() => rawData.filter(r => r.periodo === '202601'), [rawData]);
-    const dataAnterior = useMemo(() => rawData.filter(r => r.periodo === '202512'), [rawData]);
+    // Periodos disponibles
+    const periodosDisponibles = useMemo(() => {
+        const periodos = [...new Set(rawData.map(r => r.periodo))].sort().reverse();
+        return periodos;
+    }, [rawData]);
 
-    const totalActual = dataActual.reduce((acc, r) => acc + r.importe, 0);
-    const totalAnterior = dataAnterior.reduce((acc, r) => acc + r.importe, 0);
-    const tendenciaTotal = totalAnterior > 0 ? ((totalActual - totalAnterior) / totalAnterior * 100).toFixed(1) : 0;
+    // Datos filtrados por período
+    const dataDelMes = useMemo(() => {
+        return rawData.filter(r => r.periodo === mesSeleccionado);
+    }, [rawData, mesSeleccionado]);
+
+    // Datos filtrados por búsqueda
+    const dataFiltrada = useMemo(() => {
+        if (!busqueda) return dataDelMes;
+        return dataDelMes.filter(r =>
+            r.usuario.toLowerCase().includes(busqueda.toLowerCase())
+        );
+    }, [dataDelMes, busqueda]);
+
+    // Total del mes
+    const totalMes = dataFiltrada.reduce((acc, r) => acc + r.importe, 0);
 
     // Composición por categoría
     const composicion = useMemo(() => {
-        const counts = dataActual.reduce((acc, r) => {
+        const counts = dataFiltrada.reduce((acc, r) => {
             acc[r.categoria] = (acc[r.categoria] || 0) + r.importe;
             return acc;
         }, {});
         return Object.entries(counts).sort((a, b) => b[1] - a[1]);
-    }, [dataActual]);
+    }, [dataFiltrada]);
 
-    // Evolución histórica (Últimos 6 meses ficticios basados en data)
-    const mesesHist = ['Ago', 'Sep', 'Oct', 'Nov', 'Dic', 'Ene'];
-    const valoresHist = [17.7, 22.8, 24.5, 23.3, 23.6, (totalActual / 1000000).toFixed(1)];
+    // Ranking de usuarios
+    const rankingUsuarios = useMemo(() => {
+        const porUsuario = dataFiltrada.reduce((acc, r) => {
+            acc[r.usuario] = (acc[r.usuario] || 0) + r.importe;
+            return acc;
+        }, {});
+        return Object.entries(porUsuario)
+            .map(([nombre, total]) => ({ nombre, total }))
+            .sort((a, b) => b.total - a.total);
+    }, [dataFiltrada]);
 
-    if (loading) return <div className="loading-screen">Cargando Tablero Real...</div>;
+    if (loading) {
+        return (
+            <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', background: '#f8fafc' }}>
+                <div style={{ textAlign: 'center' }}>
+                    <h2 style={{ color: '#1e3a8a' }}>Cargando datos reales...</h2>
+                    <p style={{ color: '#64748b' }}>Conectando con Google Sheets</p>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="app-container" style={{ background: '#f8fafc' }}>
@@ -72,79 +173,126 @@ function App() {
 
                 {activeTab === 'tablero' && (
                     <>
-                        <section className="search-section">
-                            <div className="hero-card" style={{ padding: '1rem' }}>
-                                <div style={{ color: '#1e3a8a', fontWeight: '700', marginBottom: '8px', fontSize: '0.8rem' }}>👤 Filtrar por Persona</div>
-                                <input
-                                    className="filter-input"
-                                    style={{ width: '100%', border: '1px solid #e2e8f0', borderRadius: '12px' }}
-                                    placeholder="Buscar persona..."
-                                    value={busqueda}
-                                    onChange={e => setBusqueda(e.target.value)}
-                                />
+                        {/* Filtros */}
+                        <section className="hero-card" style={{ padding: '1rem', marginBottom: '1rem' }}>
+                            <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                                <div style={{ flex: 1, minWidth: '150px' }}>
+                                    <label style={{ fontSize: '0.7rem', color: '#64748b', display: 'block', marginBottom: '4px' }}>PERÍODO</label>
+                                    <select
+                                        className="filter-select"
+                                        style={{ width: '100%' }}
+                                        value={mesSeleccionado}
+                                        onChange={e => setMesSeleccionado(e.target.value)}
+                                    >
+                                        {periodosDisponibles.map(p => (
+                                            <option key={p} value={p}>{p.slice(0, 4)}/{p.slice(4)}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div style={{ flex: 2, minWidth: '200px' }}>
+                                    <label style={{ fontSize: '0.7rem', color: '#64748b', display: 'block', marginBottom: '4px' }}>BUSCAR PERSONA</label>
+                                    <input
+                                        className="filter-input"
+                                        style={{ width: '100%' }}
+                                        placeholder="Escribí un nombre..."
+                                        value={busqueda}
+                                        onChange={e => setBusqueda(e.target.value)}
+                                    />
+                                </div>
                             </div>
                         </section>
 
+                        {/* Indicadores principales */}
                         <div className="indicator-grid">
                             <div className="indicator-card">
                                 <div className="indicator-header">
                                     <span className="indicator-title">Total Confirmado</span>
-                                    <span className={`trend-badge ${tendenciaTotal > 0 ? 'trend-red' : 'trend-green'}`}>
-                                        {tendenciaTotal > 0 ? '▲' : '▼'} {Math.abs(tendenciaTotal)}%
-                                    </span>
                                 </div>
-                                <div className="indicator-value">{formatCurrency(totalActual)}</div>
-                                <div style={{ color: '#94a3b8', fontSize: '0.7rem', marginTop: '4px' }}>Gasto consolidado</div>
+                                <div className="indicator-value">{formatCurrency(totalMes)}</div>
+                                <div style={{ color: '#64748b', fontSize: '0.75rem' }}>
+                                    {dataFiltrada.length} transacciones
+                                </div>
                             </div>
 
                             <div className="indicator-card purple-border">
                                 <div className="indicator-header">
-                                    <span className="indicator-title">Costo por KM</span>
-                                    <span className="trend-badge trend-red">▲ 428%</span>
+                                    <span className="indicator-title">Usuarios Activos</span>
                                 </div>
-                                <div className="indicator-value">{formatCurrency(2040)}</div>
-                                <div style={{ color: '#94a3b8', fontSize: '0.7rem', marginTop: '4px' }}>10,6 M / 5,2 K km</div>
+                                <div className="indicator-value">{rankingUsuarios.length}</div>
+                                <div style={{ color: '#64748b', fontSize: '0.75rem' }}>
+                                    en el período seleccionado
+                                </div>
                             </div>
                         </div>
 
-                        <section className="historical-chart">
-                            <h3 style={{ fontSize: '0.9rem', color: '#1e3a8a', fontWeight: '700' }}>EVOLUCIÓN HISTÓRICA</h3>
-                            <div className="bar-container">
-                                {mesesHist.map((m, i) => (
-                                    <div key={m} className="monthly-bar" style={{ height: `${valoresHist[i] * 4}px`, background: i === 5 ? '#3b82f6' : '#94a3b844' }}>
-                                        <span className="bar-label-top">{valoresHist[i]}M</span>
-                                        <span className="bar-label-bottom">{m}</span>
+                        {/* Composición por Categoría */}
+                        <section className="hero-card">
+                            <h3 style={{ fontSize: '0.9rem', color: '#1e3a8a', fontWeight: '700', marginBottom: '1rem' }}>
+                                COMPOSICIÓN POR CATEGORÍA
+                            </h3>
+                            <div className="comp-bar">
+                                {composicion.map(([cat, val]) => (
+                                    <div
+                                        key={cat}
+                                        className="comp-segment"
+                                        style={{
+                                            width: `${(val / totalMes) * 100}%`,
+                                            background: CATEGORY_COLORS[cat] || '#64748b'
+                                        }}
+                                        title={`${cat}: ${formatCurrency(val)}`}
+                                    />
+                                ))}
+                            </div>
+                            <div style={{ marginTop: '1.5rem' }}>
+                                {composicion.map(([cat, val]) => (
+                                    <div key={cat} style={{
+                                        display: 'flex',
+                                        justifyContent: 'space-between',
+                                        alignItems: 'center',
+                                        padding: '10px 0',
+                                        borderBottom: '1px solid #f1f5f9'
+                                    }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                            <div style={{
+                                                width: '12px',
+                                                height: '12px',
+                                                borderRadius: '3px',
+                                                background: CATEGORY_COLORS[cat] || '#64748b'
+                                            }} />
+                                            <span style={{ fontWeight: '600' }}>{cat}</span>
+                                        </div>
+                                        <span style={{ fontWeight: '800' }}>{formatCurrency(val)}</span>
                                     </div>
                                 ))}
                             </div>
                         </section>
 
-                        <section className="hero-card">
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <h3 style={{ fontSize: '0.9rem', color: '#1e3a8a', fontWeight: '700' }}>COMPOSICIÓN</h3>
-                                <span style={{ fontSize: '0.7rem', color: '#3b82f6', fontWeight: '700' }}>Filtrar Ranking ↓</span>
-                            </div>
-                            <div className="comp-bar">
-                                {composicion.map(([cat, val]) => (
-                                    <div key={cat} className="comp-segment" style={{ width: `${(val / totalActual) * 100}%`, background: CATEGORY_COLORS[cat] || '#64748b' }}></div>
-                                ))}
-                            </div>
-                            <p style={{ fontSize: '0.7rem', color: '#94a3b8', textAlign: 'center' }}>Pasa el mouse sobre los colores...</p>
-
-                            <div style={{ marginTop: '1.5rem' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.6rem', color: '#94a3b8', fontWeight: '700', textTransform: 'uppercase', marginBottom: '1rem' }}>
-                                    <span>Categoría</span>
-                                    <span>Monto</span>
-                                    <span>Vs Mes Ant</span>
-                                </div>
-                                {composicion.slice(0, 5).map(([cat, val]) => (
-                                    <div key={cat} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderTop: '1px solid #f1f5f9' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: CATEGORY_COLORS[cat] }}></div>
-                                            <span style={{ fontWeight: '700', fontSize: '0.9rem' }}>{cat}</span>
+                        {/* Ranking de Usuarios */}
+                        <section className="hero-card" style={{ marginTop: '1.5rem' }}>
+                            <h3 style={{ fontSize: '0.9rem', color: '#1e3a8a', fontWeight: '700', marginBottom: '1rem' }}>
+                                RANKING DE GASTOS
+                            </h3>
+                            <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                                {rankingUsuarios.map((u, i) => (
+                                    <div key={i} style={{
+                                        display: 'flex',
+                                        justifyContent: 'space-between',
+                                        alignItems: 'center',
+                                        padding: '12px 0',
+                                        borderBottom: '1px solid #f1f5f9'
+                                    }}>
+                                        <div>
+                                            <span style={{
+                                                display: 'inline-block',
+                                                width: '28px',
+                                                fontWeight: '800',
+                                                color: i < 3 ? '#1e3a8a' : '#94a3b8'
+                                            }}>
+                                                #{i + 1}
+                                            </span>
+                                            <span style={{ fontWeight: '700' }}>{u.nombre}</span>
                                         </div>
-                                        <span style={{ fontWeight: '800' }}>{(val / 1000000).toFixed(1)} M</span>
-                                        <span style={{ color: '#22c55e', fontSize: '0.75rem', fontWeight: '700' }}>▼ 11%</span>
+                                        <span style={{ fontWeight: '800', fontSize: '1.1rem' }}>{formatCurrency(u.total)}</span>
                                     </div>
                                 ))}
                             </div>
@@ -155,18 +303,16 @@ function App() {
                 {activeTab === 'alertas' && (
                     <section className="hero-card">
                         <h2 style={{ fontSize: '1.2rem', fontWeight: '800', marginBottom: '1rem' }}>Alertas de Desvío</h2>
-                        <div style={{ background: '#fef2f2', border: '1px solid #fecaca', padding: '1rem', borderRadius: '12px', color: '#991b1b', fontSize: '0.8rem', fontWeight: '700', marginBottom: '1.5rem' }}>
-                            ⚠️ RANKING MAYORES DESVÍOS ($)
+                        <div style={{ background: '#fef2f2', padding: '1rem', borderRadius: '12px', color: '#991b1b', fontSize: '0.85rem', fontWeight: '700', marginBottom: '1.5rem' }}>
+                            ⚠️ RANKING MAYORES GASTOS
                         </div>
-                        {rawData.slice(0, 5).map((r, i) => (
-                            <div key={i} className="audit-item" style={{ border: 'none', background: '#fff', marginBottom: '10px', borderRadius: '12px', boxShadow: '0 2px 5px rgba(0,0,0,0.05)' }}>
+                        {rankingUsuarios.slice(0, 5).map((u, i) => (
+                            <div key={i} className="audit-item" style={{ marginBottom: '10px', borderRadius: '12px', boxShadow: '0 2px 5px rgba(0,0,0,0.05)' }}>
                                 <div>
-                                    <div style={{ fontWeight: '800' }}>#{i + 1} {r.usuario}</div>
-                                    <div style={{ color: '#ef4444', fontSize: '0.75rem' }}>↑ {formatCurrency(r.importe * 0.4)} (73%)</div>
+                                    <div style={{ fontWeight: '800' }}>#{i + 1} {u.nombre}</div>
                                 </div>
                                 <div style={{ textAlign: 'right' }}>
-                                    <div style={{ fontWeight: '800' }}>{formatCurrency(r.importe)}</div>
-                                    <div style={{ color: '#94a3b8', fontSize: '0.7rem' }}>Prom: {formatCurrency(r.importe * 0.6)}</div>
+                                    <div style={{ fontWeight: '800', fontSize: '1.1rem' }}>{formatCurrency(u.total)}</div>
                                 </div>
                             </div>
                         ))}
@@ -177,12 +323,13 @@ function App() {
                     <section className="hero-card" style={{ padding: 0 }}>
                         <div style={{ padding: '1.5rem', borderBottom: '1px solid #f1f5f9' }}>
                             <h2 style={{ fontSize: '1.2rem', fontWeight: '800' }}>Auditoría de Transacciones</h2>
+                            <p style={{ color: '#64748b', fontSize: '0.8rem' }}>{dataFiltrada.length} transacciones en {mesSeleccionado}</p>
                         </div>
                         <div style={{ maxHeight: '600px', overflowY: 'auto' }}>
-                            {rawData.map((r, i) => (
+                            {dataFiltrada.map((r, i) => (
                                 <div key={i} className="audit-item">
                                     <div className="audit-info">
-                                        <h4>{r.comercio || 'Transacción Sin Nombre'}</h4>
+                                        <h4>{r.comercio || 'Sin comercio'}</h4>
                                         <div className="audit-meta">{r.fecha} • {r.usuario}</div>
                                         <div style={{ marginTop: '4px' }}>
                                             <span className="tag-card">{r.metodo}</span>
@@ -191,7 +338,7 @@ function App() {
                                     </div>
                                     <div style={{ textAlign: 'right' }}>
                                         <div style={{ fontSize: '1.1rem', fontWeight: '800' }}>{formatCurrency(r.importe)}</div>
-                                        <div style={{ color: '#22c55e', fontSize: '0.65rem', fontWeight: '800', marginTop: '4px' }}>CONFIRMADA</div>
+                                        <div style={{ color: '#22c55e', fontSize: '0.7rem', fontWeight: '700' }}>CONFIRMADA</div>
                                     </div>
                                 </div>
                             ))}
