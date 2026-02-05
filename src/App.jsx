@@ -425,31 +425,45 @@ function App() {
     const alertasDesvio = useMemo(() => {
         if (rawData.length === 0 || !mesSeleccionado) return [];
 
+        const anio = mesSeleccionado.slice(0, 4);
+        const mesLimite = mesSeleccionado; // e.g. "202512"
+
+        // Filtrar datos según el modo
         const dataPeriodo = modoFecha === 'anio'
-            ? rawData.filter(r => r.periodo.startsWith(mesSeleccionado.slice(0, 4)))
+            ? rawData.filter(r => r.periodo.startsWith(anio) && r.periodo <= mesLimite)
             : rawData.filter(r => r.periodo === mesSeleccionado);
 
-        const usuariosEnPeriodo = [...new Set(dataPeriodo.map(r => r.usuario))];
-        const totalPeriodo = dataPeriodo.reduce((acc, r) => acc + r.importe, 0);
-        const promedioGlobal = usuariosEnPeriodo.length > 0 ? totalPeriodo / usuariosEnPeriodo.length : 0;
+        // Cuántos meses estamos promediando
+        const numMeses = modoFecha === 'anio' ? parseInt(mesLimite.slice(4), 10) : 1;
 
-        // Gasto por usuario
-        const gastosPorUsuario = dataPeriodo.reduce((acc, r) => {
+        const usuariosEnPeriodo = [...new Set(dataPeriodo.map(r => r.usuario))];
+        const totalGlobal = dataPeriodo.reduce((acc, r) => acc + r.importe, 0);
+
+        // Promedio MENSUAL por usuario del segmento
+        const promedioMensualGlobal = usuariosEnPeriodo.length > 0
+            ? totalGlobal / usuariosEnPeriodo.length / numMeses
+            : 0;
+
+        // Gasto total acumulado por usuario en el periodo
+        const totalPorUsuario = dataPeriodo.reduce((acc, r) => {
             acc[r.usuario] = (acc[r.usuario] || 0) + r.importe;
             return acc;
         }, {});
 
-        return Object.entries(gastosPorUsuario)
-            .map(([usuario, total]) => {
-                const desvioMonto = total - promedioGlobal;
-                const desvioPct = promedioGlobal > 0 ? (desvioMonto / promedioGlobal) * 100 : 0;
+        return Object.entries(totalPorUsuario)
+            .map(([usuario, totalAcumulado]) => {
+                const promedioMensualUsuario = totalAcumulado / numMeses;
+                const desvioMonto = promedioMensualUsuario - promedioMensualGlobal;
+                const desvioPct = promedioMensualGlobal > 0 ? (desvioMonto / promedioMensualGlobal) * 100 : 0;
 
                 return {
                     usuario,
-                    gastoActual: total,
-                    promedio: promedioGlobal,
+                    // En modo anio mostramos el promedio mensual que lleva, en modo mes el gasto del mes
+                    gastoActual: promedioMensualUsuario,
+                    promedio: promedioMensualGlobal,
                     desvioMonto,
                     desvioPct,
+                    totalAcumulado, // Info extra
                     esAnual: modoFecha === 'anio'
                 };
             })
@@ -1000,7 +1014,7 @@ function App() {
 
                                                 <div className="stats-col">
                                                     <div className="stat-mini">
-                                                        <span className="label">Actual</span>
+                                                        <span className="label">{modoFecha === 'mes' ? 'Actual' : 'Prom. Mensual'}</span>
                                                         <span className="value">{formatCurrency(a.gastoActual)}</span>
                                                     </div>
                                                     {modoFecha === 'mes' && (
@@ -1031,22 +1045,15 @@ function App() {
                                                         <h4>Datos Clave</h4>
                                                         <div className="detail-grid">
                                                             <div className="d-item">
-                                                                <span>{modoFecha === 'mes' ? 'Promedio Histórico' : 'Promedio Mensual'}</span>
+                                                                <span>{modoFecha === 'mes' ? 'Promedio Mes' : 'Promedio Mensual Segmento'}</span>
                                                                 <strong>{formatCurrency(a.promedio)}</strong>
                                                             </div>
-                                                            {modoFecha === 'mes' ? (
-                                                                <div className="d-item">
-                                                                    <span>Diferencia</span>
-                                                                    <strong className={a.desvioMonto > 0 ? 'text-red' : 'text-green'}>
-                                                                        {a.desvioMonto > 0 ? '+' : ''}{formatCurrency(a.desvioMonto)}
-                                                                    </strong>
-                                                                </div>
-                                                            ) : (
-                                                                <div className="d-item">
-                                                                    <span>Último Mes ({formatPeriodoCorto(mesSeleccionado)})</span>
-                                                                    <strong>{formatCurrency(a.ultimoMesVal || 0)}</strong>
-                                                                </div>
-                                                            )}
+                                                            <div className="d-item">
+                                                                <span>Diferencia</span>
+                                                                <strong className={a.desvioMonto > 0 ? 'text-red' : 'text-green'}>
+                                                                    {a.desvioMonto > 0 ? '+' : ''}{formatCurrency(a.desvioMonto)}
+                                                                </strong>
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 </div>
