@@ -19,18 +19,58 @@ const CATEGORY_COLORS = {
     'Reparaciones': '#eab308'
 };
 
+const Icons = {
+    Chart: () => (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18" /><path d="m19 9-5 5-4-4-3 3" /></svg>
+    ),
+    Money: () => (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="16" /><line x1="8" y1="12" x2="16" y2="12" /></svg>
+    ),
+    Audit: () => (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /><line x1="10" y1="9" x2="8" y2="9" /></svg>
+    ),
+    Users: () => (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
+    ),
+    Alert: () => (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>
+    ),
+    Fuel: () => (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 22L17 22" /><path d="M4 22L4 4C4 2.89543 4.89543 2 6 2L15 2C16.1046 2 17 2.89543 17 4L17 22" /><path d="M7 2L7 9" /><path d="M14 2L14 9" /><path d="M17 8L19 8C20.1046 8 21 8.89543 21 10L21 22" /><line x1="7" y1="16" x2="14" y2="16" /><line x1="7" y1="12" x2="14" y2="12" /></svg>
+    ),
+    Car: () => (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-1.1 0-2 .9-2 2v7c0 .6.4 1 1 1h2" /><circle cx="7" cy="17" r="2" /><circle cx="17" cy="17" r="2" /><path d="M13 17h2" /><path d="M7 17h6" /></svg>
+    ),
+    Close: () => (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+    ),
+    CreditCard: () => (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2" /><line x1="1" y1="10" x2="23" y2="10" /></svg>
+    ),
+    Trophy: () => (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" /><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" /><path d="M4 22h16" /><path d="M10 22V18" /><path d="M14 22V18" /><path d="M18 4H6v11a6 6 0 0 0 12 0V4z" /></svg>
+    ),
+    ChevronDown: () => (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
+    ),
+    ChevronUp: () => (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15" /></svg>
+    )
+};
+
 const Logo = () => (
     <div className="logo-wrapper">
-        <svg width="32" height="32" viewBox="0 0 100 100" className="logo-icon">
-            <rect width="100" height="100" fill="#1e3a8a" />
-            <text x="10" y="45" fontFamily="Georgia, serif" fontSize="45" fill="white" fontWeight="bold">D</text>
-            <text x="55" y="45" fontFamily="Georgia, serif" fontSize="45" fill="white" fontWeight="bold">C</text>
-            <text x="32" y="85" fontFamily="Georgia, serif" fontSize="45" fill="white" fontWeight="bold">a</text>
-            <text x="65" y="85" fontFamily="Georgia, serif" fontSize="45" fill="white" fontWeight="bold">C</text>
-        </svg>
+        <div className="logo-icon-container">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="logo-svg">
+                <path d="M3 3v18h18" />
+                <path d="M18 17V9" />
+                <path d="M13 17V5" />
+                <path d="M8 17v-3" />
+            </svg>
+        </div>
         <div className="logo-text">
-            <span className="logo-title">DeCampoaCampo</span>
-            <span className="logo-subtitle">Dashboard de Gastos</span>
+            <span className="logo-title">DECAMPOACAMPO</span>
+            <span className="logo-subtitle">Analytics Pro</span>
         </div>
     </div>
 );
@@ -556,19 +596,19 @@ function App() {
                         className={`nav-tab ${activeTab === 'tablero' ? 'active' : ''}`}
                         onClick={() => setActiveTab('tablero')}
                     >
-                        📊 Tablero
+                        <Icons.Chart /> Tablero
                     </button>
                     <button
                         className={`nav-tab ${activeTab === 'alertas' ? 'active' : ''}`}
                         onClick={() => setActiveTab('alertas')}
                     >
-                        ⚠️ Desvíos
+                        <Icons.Alert /> Desvíos
                     </button>
                     <button
                         className={`nav-tab ${activeTab === 'auditoria' ? 'active' : ''}`}
                         onClick={() => setActiveTab('auditoria')}
                     >
-                        📋 Auditoría
+                        <Icons.Audit /> Auditoría
                     </button>
                 </nav>
             </header>
@@ -612,12 +652,12 @@ function App() {
                                         setPersonaSeleccionada('');
                                         setBusqueda('');
                                     }}>
-                                        ✕ Limpiar persona
+                                        <Icons.Close /> Persona
                                     </button>
                                 )}
                                 {categoriaFiltrada && (
                                     <button className="clear-filter" onClick={() => setCategoriaFiltrada('')}>
-                                        ✕ Limpiar categoría
+                                        <Icons.Close /> Categoría
                                     </button>
                                 )}
                             </div>
@@ -626,7 +666,7 @@ function App() {
                             <div className="chart-card">
                                 <div className="chart-header">
                                     <h3>
-                                        📈 Evolución de Gastos
+                                        <Icons.Chart /> Evolución de Gastos
                                         {personaSeleccionada && <span className="filter-badge">{personaSeleccionada}</span>}
                                         {categoriaFiltrada && <span className="filter-badge category">{categoriaFiltrada}</span>}
                                     </h3>
@@ -671,21 +711,27 @@ function App() {
                             {/* Indicadores */}
                             <div className="indicators-row">
                                 <div className="indicator-card">
-                                    <span className="indicator-icon">💰</span>
+                                    <div className="indicator-icon-wrapper blue">
+                                        <Icons.Money />
+                                    </div>
                                     <div className="indicator-info">
                                         <span className="indicator-label">Total {formatPeriodo(mesSeleccionado)}</span>
                                         <span className="indicator-value">{formatCurrency(totalMes)}</span>
                                     </div>
                                 </div>
                                 <div className="indicator-card">
-                                    <span className="indicator-icon">📝</span>
+                                    <div className="indicator-icon-wrapper green">
+                                        <Icons.Audit />
+                                    </div>
                                     <div className="indicator-info">
                                         <span className="indicator-label">Transacciones</span>
                                         <span className="indicator-value">{dataDelMes.length}</span>
                                     </div>
                                 </div>
                                 <div className="indicator-card">
-                                    <span className="indicator-icon">👥</span>
+                                    <div className="indicator-icon-wrapper orange">
+                                        <Icons.Users />
+                                    </div>
                                     <div className="indicator-info">
                                         <span className="indicator-label">Usuarios</span>
                                         <span className="indicator-value">{rankingUsuarios.length}</span>
@@ -700,11 +746,13 @@ function App() {
                                     {/* Header con gradiente */}
                                     <div className="fuel-header">
                                         <div className="fuel-header-left">
-                                            <div className="fuel-icon">⛽</div>
+                                            <div className="fuel-icon-wrapper">
+                                                <Icons.Fuel />
+                                            </div>
                                             <div>
                                                 <h3>Eficiencia de Combustible</h3>
                                                 <span className="fuel-header-subtitle">
-                                                    Análisis de consumo por usuario • {formatPeriodo(mesSeleccionado)}
+                                                    Análisis de rendimiento por usuario
                                                 </span>
                                             </div>
                                         </div>
@@ -738,12 +786,12 @@ function App() {
                                                             <div className="fuel-user-info">
                                                                 <div className="fuel-user-name">{d.usuario}</div>
                                                                 <div className="fuel-user-vehicle">
-                                                                    🚗 <span>{d.tipo !== '-' ? d.tipo : 'Sin especificar'}</span>
-                                                                    {d.patente !== '-' && <span>{d.patente}</span>}
+                                                                    <Icons.Car /> <span>{d.tipo !== '-' ? d.tipo : 'Sin especificar'}</span>
+                                                                    {d.patente !== '-' && <span className="patente-tag">{d.patente}</span>}
                                                                 </div>
                                                             </div>
                                                             <div className="fuel-expand-btn">
-                                                                {isExpanded ? '▲' : '▼'}
+                                                                {isExpanded ? <Icons.ChevronUp /> : <Icons.ChevronDown />}
                                                             </div>
                                                         </div>
 
@@ -823,7 +871,7 @@ function App() {
                         <div className="dashboard-right">
                             {/* Composición */}
                             <div className="section-card">
-                                <h3>📊 Composición por Categoría</h3>
+                                <h3><Icons.Chart /> Composición por Categoría</h3>
                                 <div className="composition-bar">
                                     {composicion.map(([cat, val]) => {
                                         const pct = ((val / totalMes) * 100).toFixed(1);
@@ -870,7 +918,7 @@ function App() {
 
                             {/* Ranking o transacciones de persona */}
                             <div className="section-card">
-                                <h3>{personaSeleccionada ? `💳 Consumos de ${personaSeleccionada}` : '🏆 Ranking de Gastos'}</h3>
+                                <h3>{personaSeleccionada ? <><Icons.CreditCard /> Consumos de {personaSeleccionada}</> : <><Icons.Trophy /> Ranking de Gastos</>}</h3>
                                 <div className="ranking-list">
                                     {personaSeleccionada ? (
                                         transaccionesOrdenadas.slice(0, 10).map((t, i) => (
@@ -907,8 +955,8 @@ function App() {
                         <div className="alertas-container">
                             <div className="alertas-header-row">
                                 <div className="header-titles">
-                                    <h2>⚠️ {modoFecha === 'mes' ? 'Desvíos y Alertas' : 'Ranking Anual'}</h2>
-                                    <p>{modoFecha === 'mes' ? 'Usuarios con desvíos vs promedio 3 meses' : 'Ranking de gasto total del año'}</p>
+                                    <h2><Icons.Alert /> {modoFecha === 'mes' ? 'Análisis de Desvíos' : 'Ranking Consolidado'}</h2>
+                                    <p>{modoFecha === 'mes' ? 'Comparativa de gasto individual vs. promedio del segmento' : 'Gasto acumulado por usuario en el período seleccionado'}</p>
                                 </div>
                                 <div className="alertas-filters">
                                     <div className="toggle-mode">
@@ -963,7 +1011,7 @@ function App() {
                                                         </div>
                                                     )}
                                                 </div>
-                                                <div className="expand-icon">{isExpanded ? '▲' : '▼'}</div>
+                                                <div className="expand-icon">{isExpanded ? <Icons.ChevronUp /> : <Icons.ChevronDown />}</div>
                                             </div>
 
                                             {isExpanded && (
