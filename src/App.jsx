@@ -383,14 +383,14 @@ function App() {
                 dataDelPeriodo = dataDelPeriodo.filter(r => r.usuario === personaSeleccionada);
             }
 
+            if (categoriaFiltrada) {
+                dataDelPeriodo = dataDelPeriodo.filter(r => r.categoria === categoriaFiltrada);
+            }
+
             const porCategoria = dataDelPeriodo.reduce((acc, r) => {
                 acc[r.categoria] = (acc[r.categoria] || 0) + r.importe;
                 return acc;
             }, {});
-
-            if (categoriaFiltrada) {
-                dataDelPeriodo = dataDelPeriodo.filter(r => r.categoria === categoriaFiltrada);
-            }
 
             const total = dataDelPeriodo.reduce((acc, r) => acc + r.importe, 0);
 
@@ -668,7 +668,14 @@ function App() {
                                     <h3>
                                         <Icons.Chart /> Evolución de Gastos
                                         {personaSeleccionada && <span className="filter-badge">{personaSeleccionada}</span>}
-                                        {categoriaFiltrada && <span className="filter-badge category">{categoriaFiltrada}</span>}
+                                        {categoriaFiltrada && (
+                                            <span
+                                                className="filter-badge"
+                                                style={{ background: CATEGORY_COLORS[categoriaFiltrada] || 'var(--accent-blue)' }}
+                                            >
+                                                {categoriaFiltrada}
+                                            </span>
+                                        )}
                                     </h3>
                                     <div className="range-selector">
                                         {[3, 6, 9, 12].map(n => (
