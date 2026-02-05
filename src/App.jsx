@@ -18,6 +18,22 @@ const CATEGORY_COLORS = {
     'Reparaciones': '#eab308'
 };
 
+const Logo = () => (
+    <div className="logo-wrapper">
+        <svg width="32" height="32" viewBox="0 0 100 100" className="logo-icon">
+            <rect width="100" height="100" fill="#3b82f6" />
+            <text x="10" y="45" fontFamily="Georgia, serif" fontSize="45" fill="white" fontWeight="bold">d</text>
+            <text x="55" y="45" fontFamily="Georgia, serif" fontSize="45" fill="white" fontWeight="bold">C</text>
+            <text x="32" y="85" fontFamily="Georgia, serif" fontSize="45" fill="white" fontWeight="bold">a</text>
+            <text x="65" y="85" fontFamily="Georgia, serif" fontSize="45" fill="white" fontWeight="bold">C</text>
+        </svg>
+        <div className="logo-text">
+            <span className="logo-title">DE CAMPO A CAMPO</span>
+            <span className="logo-subtitle">Dashboard de Gastos</span>
+        </div>
+    </div>
+);
+
 function parseCSVLine(line) {
     const result = [];
     let current = '';
@@ -332,8 +348,7 @@ function App() {
             {/* Header */}
             <header className="app-header">
                 <div className="header-left">
-                    <h1 className="logo">DE CAMPO A CAMPO</h1>
-                    <span className="subtitle">Dashboard de Gastos</span>
+                    <Logo />
                 </div>
                 <nav className="header-nav">
                     <button
