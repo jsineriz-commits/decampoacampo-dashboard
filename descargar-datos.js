@@ -1,36 +1,76 @@
-const fs = require('fs');
-const https = require('https');
-const path = require('path');
+import fs from 'fs';
+import https from 'https';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // ==========================================
-// CONFIGURACIÓN (PEGÁ TU API KEY ACÁ)
+// CONFIGURACIÓN
 // ==========================================
-const API_KEY = 'AIzaSyD2xBSdB5m-XA6XugA_QrouPWFhq2m2Fss';
-const SHEET_ID = '1VeIxJ2gYMk2ZSlcRF_4wsJBiNIBp4apaW5hmKSILJhE';
-const SHEET_NAME = 'basemendelgastos'; // O el nombre de la hoja exacta
-// ==========================================
+const SHEET_ID = '1nxrPYMCCHJ_kdsbWFE28bRoqiu0WS0PUAYTKsA-qTKw';
+const SHEET_NAME = 'Base Mendel';
+const URL_GASTOS = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(SHEET_NAME)}`;
 
-const targetPath = path.join(__dirname, 'public', 'gastos_reales.csv');
+// KMs: Mantenemos el mismo ID pero buscamos la hoja 'KMS MENSUALES' (suponiendo que existe en el mismo doc)
+// Si no existe, fallará, pero es la mejor apuesta sin más info.
+const URL_KMS = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent('KMS MENSUALES')}`;
 
-// URL para exportar como CSV usando la API Key
-const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&key=${API_KEY}`;
-
-console.log('--- Iniciando descarga de datos privados ---');
-
-https.get(url, (res) => {
-    if (res.statusCode !== 200) {
-        console.error(`Error de descarga: ${res.statusCode}. Verifica que la API Key sea correcta y laSheets API esté habilitada.`);
-        return;
+const filesToDownload = [
+    {
+        name: 'gastos_reales.csv',
+        url: URL_GASTOS
+    },
+    {
+        name: 'kms_mensuales.csv',
+        url: URL_KMS
     }
+];
 
-    const file = fs.createWriteStream(targetPath);
-    res.pipe(file);
+const downloadFile = (fileConfig) => {
+    return new Promise((resolve, reject) => {
+        const targetPath = path.join(__dirname, 'public', fileConfig.name);
 
-    file.on('finish', () => {
-        file.close();
-        console.log('✅ Datos guardados correctamente en: ' + targetPath);
-        process.exit(0);
+        console.log(`⬇️ Descargando ${fileConfig.name}...`);
+
+        const tryDownload = (currentUrl) => {
+            https.get(currentUrl, (res) => {
+                // Manejar redirecciones
+                if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+                    console.log(`↪️ Redireccionando...`);
+                    tryDownload(res.headers.location);
+                    return;
+                }
+
+                if (res.statusCode !== 200) {
+                    console.error(`❌ Error descargando ${fileConfig.name}: ${res.statusCode}`);
+                    resolve(false);
+                    return;
+                }
+
+                const fileStream = fs.createWriteStream(targetPath);
+                res.pipe(fileStream);
+
+                fileStream.on('finish', () => {
+                    fileStream.close();
+                    console.log(`✅ ${fileConfig.name} guardado!`);
+                    resolve(true);
+                });
+            }).on('error', (err) => {
+                console.error(`❌ Error red: ${err.message}`);
+                resolve(false);
+            });
+        };
+
+        tryDownload(fileConfig.url);
     });
-}).on('error', (err) => {
-    console.error('Error de conexión:', err.message);
-});
+};
+
+(async () => {
+    console.log('--- Iniciando actualización de datos (Base Mendel) ---');
+    for (const f of filesToDownload) {
+        await downloadFile(f);
+    }
+    console.log('--- Proceso finalizado ---');
+})();
