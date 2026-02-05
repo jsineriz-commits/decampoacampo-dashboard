@@ -60,6 +60,39 @@ function parseImporte(str) {
     return isNaN(num) ? 0 : num;
 }
 
+const formatCompact = (num) => {
+    if (num >= 1000000) return '$' + (num / 1000000).toFixed(1) + 'M';
+    if (num >= 1000) return '$' + (num / 1000).toFixed(0) + 'k';
+    return '$' + num.toFixed(0);
+};
+
+const Chart = ({ data, maxVal }) => (
+    <div className="bar-chart mini">
+        {data.map((d) => (
+            <div key={d.periodo} className="bar-column">
+                <div
+                    className="bar-container"
+                    style={{ height: `${(d.total / maxVal) * 100}%` }}
+                >
+                    {Object.entries(d.categorias).map(([cat, val]) => (
+                        <div
+                            key={cat}
+                            className="bar-segment"
+                            style={{
+                                height: `${(val / d.total) * 100}%`,
+                                background: CATEGORY_COLORS[cat] || '#6366f1'
+                            }}
+                            title={`${cat}`}
+                        />
+                    ))}
+                </div>
+                <span className="bar-label">{d.label}</span>
+                <span className="bar-value short">{formatCompact(d.total)}</span>
+            </div>
+        ))}
+    </div>
+);
+
 function App() {
     const [rawData, setRawData] = useState([])
     const [loading, setLoading] = useState(true)
@@ -69,6 +102,8 @@ function App() {
     const [mesSeleccionado, setMesSeleccionado] = useState('')
     const [rangoMeses, setRangoMeses] = useState(6)
     const [mostrarTodasCategorias, setMostrarTodasCategorias] = useState(false)
+    const [expandedAlertId, setExpandedAlertId] = useState(null); // ID del usuario expandido en alertas
+    const [modoFecha, setModoFecha] = useState('mes'); // 'mes' o 'anio'
 
     // Filtros de auditoría
     const [filtroFechaDesde, setFiltroFechaDesde] = useState('')
@@ -145,10 +180,16 @@ function App() {
         return [...new Set(rawData.map(r => r.periodo))].sort().reverse();
     }, [rawData]);
 
-    // Últimos N períodos para el gráfico
+    // Últimos N períodos para el gráfico (RELATIVO AL MES SELECCIONADO)
     const periodosGrafico = useMemo(() => {
-        return periodosDisponibles.slice(0, rangoMeses).reverse();
-    }, [periodosDisponibles, rangoMeses]);
+        if (!mesSeleccionado) return [];
+        const index = periodosDisponibles.indexOf(mesSeleccionado);
+        if (index === -1) return [];
+
+        // Tomamos desde el mes seleccionado hacia atrás (la lista está ordenada desc: más reciente primero)
+        // Ejemplo: Si selecciono Ene 2026 (index 0), quiero [Ene 2026, Dic 2025, ...]
+        return periodosDisponibles.slice(index, index + rangoMeses).reverse();
+    }, [periodosDisponibles, rangoMeses, mesSeleccionado]);
 
     // Lista de usuarios únicos
     const usuariosUnicos = useMemo(() => {
@@ -209,8 +250,8 @@ function App() {
         });
     }, [rawData, periodosGrafico, personaSeleccionada]);
 
-    // Máximo para escalar el gráfico
-    const maxGrafico = Math.max(...datosGrafico.map(d => d.total), 1);
+    // Máximo para escalar el gráfico (añadimos un 15% de margen para que no toque el título)
+    const maxGrafico = Math.max(...datosGrafico.map(d => d.total), 1) * 1.15;
 
     // Ranking de usuarios del mes
     const rankingUsuarios = useMemo(() => {
@@ -232,6 +273,34 @@ function App() {
     const alertasDesvio = useMemo(() => {
         if (periodosDisponibles.length < 2) return [];
 
+        if (modoFecha === 'anio') {
+            // Lógica para Año: Ranking de gastos totales del año seleccionado
+            const anio = mesSeleccionado.slice(0, 4);
+            const periodosDelAnio = periodosDisponibles.filter(p => p.startsWith(anio));
+
+            const gastosAnuales = {};
+            rawData.filter(r => r.periodo.startsWith(anio)).forEach(r => {
+                gastosAnuales[r.usuario] = (gastosAnuales[r.usuario] || 0) + r.importe;
+            });
+
+            return Object.entries(gastosAnuales)
+                .map(([usuario, total]) => ({
+                    usuario,
+                    gastoActual: total,
+                    promedio: total / periodosDelAnio.length, // Promedio mensual
+                    desvioMonto: 0,
+                    desvioPct: 0,
+                    topCategorias: [],
+                    esAnual: true,
+                    // Valor del último mes seleccionado para este usuario (para mostrar en detalle)
+                    ultimoMesVal: rawData
+                        .filter(r => r.periodo === mesSeleccionado && r.usuario === usuario)
+                        .reduce((acc, r) => acc + r.importe, 0)
+                }))
+                .sort((a, b) => b.gastoActual - a.gastoActual);
+        }
+
+        // Lógica Original (Mes)
         const mesActual = mesSeleccionado;
         const ultimos3Periodos = periodosDisponibles.slice(1, 4); // Excluyendo el actual
 
@@ -269,33 +338,39 @@ function App() {
                 const desvioMonto = actual - promedio;
                 const desvioPct = ((desvioMonto / promedio) * 100);
 
-                // Obtener principales categorías del usuario este mes
-                const categoriasMes = rawData
-                    .filter(r => r.periodo === mesActual && r.usuario === usuario)
-                    .reduce((acc, r) => {
-                        acc[r.categoria] = (acc[r.categoria] || 0) + r.importe;
-                        return acc;
-                    }, {});
-
-                const topCategorias = Object.entries(categoriasMes)
-                    .sort((a, b) => b[1] - a[1])
-                    .slice(0, 3);
-
                 return {
                     usuario,
                     gastoActual: actual,
                     promedio,
                     desvioMonto,
                     desvioPct,
-                    historial: historial[usuario],
-                    topCategorias
+                    esAnual: false
                 };
             })
             .filter(d => d.desvioMonto > 0) // Solo desvíos positivos
             .sort((a, b) => b.desvioMonto - a.desvioMonto);
 
         return desvios;
-    }, [rawData, mesSeleccionado, periodosDisponibles, usuariosUnicos]);
+    }, [rawData, mesSeleccionado, periodosDisponibles, usuariosUnicos, modoFecha]);
+
+    // Calcular datos del gráfico para un usuario específico (para la vista expandida)
+    const getChartDataForUser = (usuario) => {
+        const periodos = periodosGrafico; // Usa los mismos 6 meses (o los que estén configurados)
+        return periodos.map(periodo => {
+            const dataP = rawData.filter(r => r.periodo === periodo && r.usuario === usuario);
+            const total = dataP.reduce((acc, r) => acc + r.importe, 0);
+            const cats = dataP.reduce((acc, r) => {
+                acc[r.categoria] = (acc[r.categoria] || 0) + r.importe;
+                return acc;
+            }, {});
+            return {
+                periodo,
+                label: formatPeriodoCorto(periodo),
+                total,
+                categorias: cats
+            };
+        });
+    };
 
     // ============ AUDITORÍA - Filtros avanzados ============
     const transaccionesFiltradas = useMemo(() => {
@@ -361,7 +436,7 @@ function App() {
                         className={`nav-tab ${activeTab === 'alertas' ? 'active' : ''}`}
                         onClick={() => setActiveTab('alertas')}
                     >
-                        ⚠️ Alertas
+                        ⚠️ Desvíos
                     </button>
                     <button
                         className={`nav-tab ${activeTab === 'auditoria' ? 'active' : ''}`}
@@ -566,45 +641,100 @@ function App() {
 
                 {activeTab === 'alertas' && (
                     <div className="alertas-container">
-                        <div className="alertas-header">
-                            <h2>⚠️ Alertas de Desvío</h2>
-                            <p>Usuarios con mayor incremento vs promedio últimos 3 meses</p>
+                        <div className="alertas-header-row">
+                            <div className="header-titles">
+                                <h2>⚠️ {modoFecha === 'mes' ? 'Desvíos y Alertas' : 'Ranking Anual'}</h2>
+                                <p>{modoFecha === 'mes' ? 'Usuarios con desvíos vs promedio 3 meses' : 'Ranking de gasto total del año'}</p>
+                            </div>
+                            <div className="alertas-filters">
+                                <div className="toggle-mode">
+                                    <button
+                                        className={modoFecha === 'mes' ? 'active' : ''}
+                                        onClick={() => setModoFecha('mes')}>Mes</button>
+                                    <button
+                                        className={modoFecha === 'anio' ? 'active' : ''}
+                                        onClick={() => setModoFecha('anio')}>Año</button>
+                                </div>
+                                <select value={mesSeleccionado} onChange={e => setMesSeleccionado(e.target.value)}>
+                                    {periodosDisponibles.map(p => (
+                                        <option key={p} value={p}>{formatPeriodo(p)}</option>
+                                    ))}
+                                </select>
+                            </div>
                         </div>
 
-                        <div className="alertas-grid">
-                            {alertasDesvio.slice(0, 10).map((a, i) => (
-                                <div key={i} className="alerta-card">
-                                    <div className="alerta-header">
-                                        <span className="alerta-rank">#{i + 1}</span>
-                                        <span className="alerta-name">{a.usuario}</span>
-                                        <span className={`alerta-badge ${a.desvioPct > 50 ? 'danger' : 'warning'}`}>
-                                            +{a.desvioPct.toFixed(0)}%
-                                        </span>
-                                    </div>
-                                    <div className="alerta-stats">
-                                        <div className="alerta-stat">
-                                            <span className="stat-label">Gasto actual</span>
-                                            <span className="stat-value">{formatCurrency(a.gastoActual)}</span>
+                        <div className="alertas-list">
+                            {alertasDesvio.map((a, i) => {
+                                const isExpanded = expandedAlertId === a.usuario;
+                                const userChartData = isExpanded ? getChartDataForUser(a.usuario) : [];
+                                const userMax = isExpanded ? Math.max(...userChartData.map(d => d.total), 1) * 1.15 : 0;
+
+                                return (
+                                    <div
+                                        key={a.usuario}
+                                        className={`alerta-item ${isExpanded ? 'expanded' : ''}`}
+                                        onClick={() => setExpandedAlertId(isExpanded ? null : a.usuario)}
+                                    >
+                                        <div className="alerta-summary">
+                                            <div className="rank-col">#{i + 1}</div>
+                                            <div className="name-col">{a.usuario}</div>
+
+                                            <div className="stats-col">
+                                                <div className="stat-mini">
+                                                    <span className="label">Actual</span>
+                                                    <span className="value">{formatCurrency(a.gastoActual)}</span>
+                                                </div>
+                                                {modoFecha === 'mes' && (
+                                                    <div className="stat-mini">
+                                                        <span className="label">Desvío</span>
+                                                        <span className={`badge ${a.desvioPct > 50 ? 'danger' : 'warning'}`}>
+                                                            +{a.desvioPct.toFixed(0)}%
+                                                        </span>
+                                                    </div>
+                                                )}
+                                                {modoFecha === 'anio' && (
+                                                    <div className="stat-mini">
+                                                        <span className="label">Promedio/Mes</span>
+                                                        <span className="value muted">{formatCurrency(a.promedio)}</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <div className="expand-icon">{isExpanded ? '▲' : '▼'}</div>
                                         </div>
-                                        <div className="alerta-stat">
-                                            <span className="stat-label">Promedio 3M</span>
-                                            <span className="stat-value">{formatCurrency(a.promedio)}</span>
-                                        </div>
-                                        <div className="alerta-stat highlight">
-                                            <span className="stat-label">Desvío</span>
-                                            <span className="stat-value">+{formatCurrency(a.desvioMonto)}</span>
-                                        </div>
+
+                                        {isExpanded && (
+                                            <div className="alerta-details" onClick={e => e.stopPropagation()}>
+                                                <div className="detail-chart-wrapper">
+                                                    <h4>Evolución de Gastos (Últimos {rangoMeses} meses)</h4>
+                                                    <Chart data={userChartData} maxVal={userMax} />
+                                                </div>
+                                                <div className="detail-info">
+                                                    <h4>Datos Clave</h4>
+                                                    <div className="detail-grid">
+                                                        <div className="d-item">
+                                                            <span>{modoFecha === 'mes' ? 'Promedio Histórico' : 'Promedio Mensual'}</span>
+                                                            <strong>{formatCurrency(a.promedio)}</strong>
+                                                        </div>
+                                                        {modoFecha === 'mes' ? (
+                                                            <div className="d-item">
+                                                                <span>Diferencia</span>
+                                                                <strong className={a.desvioMonto > 0 ? 'text-red' : 'text-green'}>
+                                                                    {a.desvioMonto > 0 ? '+' : ''}{formatCurrency(a.desvioMonto)}
+                                                                </strong>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="d-item">
+                                                                <span>Último Mes ({formatPeriodoCorto(mesSeleccionado)})</span>
+                                                                <strong>{formatCurrency(a.ultimoMesVal || 0)}</strong>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
-                                    <div className="alerta-categories">
-                                        <span className="cat-title">Principales gastos:</span>
-                                        {a.topCategorias.map(([cat, val]) => (
-                                            <span key={cat} className="cat-tag" style={{ borderColor: CATEGORY_COLORS[cat] }}>
-                                                {cat}: {formatCurrency(val)}
-                                            </span>
-                                        ))}
-                                    </div>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
 
                         {alertasDesvio.length === 0 && (
