@@ -171,6 +171,7 @@ function App() {
     const [mostrarTodasCategorias, setMostrarTodasCategorias] = useState(false)
     const [expandedAlertId, setExpandedAlertId] = useState(null); // ID del usuario expandido en alertas
     const [modoFecha, setModoFecha] = useState('mes'); // 'mes' o 'anio'
+    const [categoriaFiltrada, setCategoriaFiltrada] = useState(''); // [NEW] Filtro global por categoría
 
     // Filtros de auditoría
     const [filtroFechaDesde, setFiltroFechaDesde] = useState('')
@@ -316,8 +317,11 @@ function App() {
         if (personaSeleccionada) {
             data = data.filter(r => r.usuario === personaSeleccionada);
         }
+        if (categoriaFiltrada) {
+            data = data.filter(r => r.categoria === categoriaFiltrada);
+        }
         return data;
-    }, [rawData, mesSeleccionado, personaSeleccionada]);
+    }, [rawData, mesSeleccionado, personaSeleccionada, categoriaFiltrada]);
 
     // Total del mes
     const totalMes = dataDelMes.reduce((acc, r) => acc + r.importe, 0);
@@ -344,6 +348,10 @@ function App() {
                 return acc;
             }, {});
 
+            if (categoriaFiltrada) {
+                dataDelPeriodo = dataDelPeriodo.filter(r => r.categoria === categoriaFiltrada);
+            }
+
             const total = dataDelPeriodo.reduce((acc, r) => acc + r.importe, 0);
 
             return {
@@ -352,7 +360,7 @@ function App() {
                 categorias: porCategoria
             };
         });
-    }, [rawData, periodosGrafico, personaSeleccionada]);
+    }, [rawData, periodosGrafico, personaSeleccionada, categoriaFiltrada]);
 
     // Máximo para escalar el gráfico (añadimos un 15% de margen para que no toque el título)
     const maxGrafico = Math.max(...datosGrafico.map(d => d.total), 1) * 1.15;
@@ -375,87 +383,39 @@ function App() {
 
     // ============ ALERTAS - Cálculo de desvíos ============
     const alertasDesvio = useMemo(() => {
-        if (periodosDisponibles.length < 2) return [];
+        if (rawData.length === 0 || !mesSeleccionado) return [];
 
-        if (modoFecha === 'anio') {
-            // Lógica para Año: Ranking de gastos totales del año seleccionado
-            const anio = mesSeleccionado.slice(0, 4);
-            const periodosDelAnio = periodosDisponibles.filter(p => p.startsWith(anio));
+        const dataPeriodo = modoFecha === 'anio'
+            ? rawData.filter(r => r.periodo.startsWith(mesSeleccionado.slice(0, 4)))
+            : rawData.filter(r => r.periodo === mesSeleccionado);
 
-            const gastosAnuales = {};
-            rawData.filter(r => r.periodo.startsWith(anio)).forEach(r => {
-                gastosAnuales[r.usuario] = (gastosAnuales[r.usuario] || 0) + r.importe;
-            });
+        const usuariosEnPeriodo = [...new Set(dataPeriodo.map(r => r.usuario))];
+        const totalPeriodo = dataPeriodo.reduce((acc, r) => acc + r.importe, 0);
+        const promedioGlobal = usuariosEnPeriodo.length > 0 ? totalPeriodo / usuariosEnPeriodo.length : 0;
 
-            return Object.entries(gastosAnuales)
-                .map(([usuario, total]) => ({
-                    usuario,
-                    gastoActual: total,
-                    promedio: total / periodosDelAnio.length, // Promedio mensual
-                    desvioMonto: 0,
-                    desvioPct: 0,
-                    topCategorias: [],
-                    esAnual: true,
-                    // Valor del último mes seleccionado para este usuario (para mostrar en detalle)
-                    ultimoMesVal: rawData
-                        .filter(r => r.periodo === mesSeleccionado && r.usuario === usuario)
-                        .reduce((acc, r) => acc + r.importe, 0)
-                }))
-                .sort((a, b) => b.gastoActual - a.gastoActual);
-        }
+        // Gasto por usuario
+        const gastosPorUsuario = dataPeriodo.reduce((acc, r) => {
+            acc[r.usuario] = (acc[r.usuario] || 0) + r.importe;
+            return acc;
+        }, {});
 
-        // Lógica Original (Mes)
-        const mesActual = mesSeleccionado;
-        const ultimos3Periodos = periodosDisponibles.slice(1, 4); // Excluyendo el actual
-
-        // Gastos por usuario en el mes actual
-        const gastosActuales = rawData
-            .filter(r => r.periodo === mesActual)
-            .reduce((acc, r) => {
-                acc[r.usuario] = (acc[r.usuario] || 0) + r.importe;
-                return acc;
-            }, {});
-
-        // Promedio de últimos 3 meses por usuario
-        const promedios = {};
-        const historial = {};
-
-        usuariosUnicos.forEach(usuario => {
-            const gastosHist = ultimos3Periodos.map(p => {
-                return rawData
-                    .filter(r => r.periodo === p && r.usuario === usuario)
-                    .reduce((acc, r) => acc + r.importe, 0);
-            });
-
-            const suma = gastosHist.reduce((a, b) => a + b, 0);
-            const count = gastosHist.filter(g => g > 0).length;
-            promedios[usuario] = count > 0 ? suma / count : 0;
-            historial[usuario] = gastosHist;
-        });
-
-        // Calcular desvíos
-        const desvios = Object.keys(gastosActuales)
-            .filter(usuario => promedios[usuario] > 0)
-            .map(usuario => {
-                const actual = gastosActuales[usuario];
-                const promedio = promedios[usuario];
-                const desvioMonto = actual - promedio;
-                const desvioPct = ((desvioMonto / promedio) * 100);
+        return Object.entries(gastosPorUsuario)
+            .map(([usuario, total]) => {
+                const desvioMonto = total - promedioGlobal;
+                const desvioPct = promedioGlobal > 0 ? (desvioMonto / promedioGlobal) * 100 : 0;
 
                 return {
                     usuario,
-                    gastoActual: actual,
-                    promedio,
+                    gastoActual: total,
+                    promedio: promedioGlobal,
                     desvioMonto,
                     desvioPct,
-                    esAnual: false
+                    esAnual: modoFecha === 'anio'
                 };
             })
-            .filter(d => d.desvioMonto > 0) // Solo desvíos positivos
+            .filter(d => d.desvioMonto > 0)
             .sort((a, b) => b.desvioMonto - a.desvioMonto);
-
-        return desvios;
-    }, [rawData, mesSeleccionado, periodosDisponibles, usuariosUnicos, modoFecha]);
+    }, [rawData, mesSeleccionado, modoFecha]);
 
     // ============ DASHBOARD - Análisis de Eficiencia de Combustible ============
     const eficienciaCombustible = useMemo(() => {
@@ -652,7 +612,12 @@ function App() {
                                         setPersonaSeleccionada('');
                                         setBusqueda('');
                                     }}>
-                                        ✕ Limpiar filtro
+                                        ✕ Limpiar persona
+                                    </button>
+                                )}
+                                {categoriaFiltrada && (
+                                    <button className="clear-filter" onClick={() => setCategoriaFiltrada('')}>
+                                        ✕ Limpiar categoría
                                     </button>
                                 )}
                             </div>
@@ -663,6 +628,7 @@ function App() {
                                     <h3>
                                         📈 Evolución de Gastos
                                         {personaSeleccionada && <span className="filter-badge">{personaSeleccionada}</span>}
+                                        {categoriaFiltrada && <span className="filter-badge category">{categoriaFiltrada}</span>}
                                     </h3>
                                     <div className="range-selector">
                                         {[3, 6, 9, 12].map(n => (
@@ -864,12 +830,13 @@ function App() {
                                         return (
                                             <div
                                                 key={cat}
-                                                className="composition-segment"
+                                                className={`composition-segment ${categoriaFiltrada === cat ? 'active' : ''}`}
                                                 style={{
                                                     width: `${Math.max(pct, 1)}%`,
                                                     background: CATEGORY_COLORS[cat] || '#6366f1'
                                                 }}
                                                 title={`${cat}: ${pct}% (${formatCurrency(val)})`}
+                                                onClick={() => setCategoriaFiltrada(categoriaFiltrada === cat ? '' : cat)}
                                             >
                                                 <span className="segment-tooltip">{pct}%</span>
                                             </div>
@@ -878,7 +845,11 @@ function App() {
                                 </div>
                                 <div className="category-list">
                                     {(mostrarTodasCategorias ? composicion : composicion.slice(0, 5)).map(([cat, val]) => (
-                                        <div key={cat} className="category-item">
+                                        <div
+                                            key={cat}
+                                            className={`category-item clickable ${categoriaFiltrada === cat ? 'active' : ''}`}
+                                            onClick={() => setCategoriaFiltrada(categoriaFiltrada === cat ? '' : cat)}
+                                        >
                                             <div className="category-info">
                                                 <span className="category-dot" style={{ background: CATEGORY_COLORS[cat] || '#6366f1' }} />
                                                 <span>{cat}</span>
