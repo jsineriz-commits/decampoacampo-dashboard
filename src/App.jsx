@@ -1,20 +1,24 @@
 import { useState, useMemo, useEffect } from 'react'
+import './styles/index.css'
 
 const LOCAL_DATA_URL = '/gastos_reales.csv';
 
 const CATEGORY_COLORS = {
     'Combustible': '#3b82f6',
-    'Otros': '#ef4444',
+    'Otros': '#a855f7',
     'Obra Social': '#10b981',
     'Service / Reparaciones Auto': '#f59e0b',
-    'Comidas': '#8b5cf6',
+    'Comidas': '#ec4899',
     'Peajes': '#64748b',
-    'Hoteleria': '#ec4899',
-    'Servicios': '#06b6d4',
-    'Monotributo/Autonomos': '#14b8a6'
+    'Hoteleria': '#06b6d4',
+    'Servicios': '#14b8a6',
+    'Monotributo/Autonomos': '#f97316',
+    'Alimentos': '#84cc16',
+    'Impuestos': '#ef4444',
+    'Reparaciones': '#eab308'
 };
 
-// CSV Parser robusto que maneja campos con comillas y comas internas
+// CSV Parser robusto
 function parseCSVLine(line) {
     const result = [];
     let current = '';
@@ -22,7 +26,6 @@ function parseCSVLine(line) {
 
     for (let i = 0; i < line.length; i++) {
         const char = line[i];
-
         if (char === '"') {
             inQuotes = !inQuotes;
         } else if (char === ',' && !inQuotes) {
@@ -36,10 +39,8 @@ function parseCSVLine(line) {
     return result;
 }
 
-// Función para parsear montos como "1,120,580" o "30,000"
 function parseImporte(str) {
     if (!str) return 0;
-    // Eliminar comillas y luego eliminar todas las comas
     const clean = str.replace(/"/g, '').replace(/,/g, '');
     const num = parseFloat(clean);
     return isNaN(num) ? 0 : num;
@@ -50,7 +51,7 @@ function App() {
     const [loading, setLoading] = useState(true)
     const [activeTab, setActiveTab] = useState('tablero')
     const [busqueda, setBusqueda] = useState('')
-    const [mesSeleccionado, setMesSeleccionado] = useState('202506')
+    const [mesSeleccionado, setMesSeleccionado] = useState('')
 
     const formatCurrency = (val) => new Intl.NumberFormat('es-AR', {
         style: 'currency',
@@ -58,30 +59,22 @@ function App() {
         maximumFractionDigits: 0
     }).format(val);
 
+    const formatPeriodo = (p) => {
+        if (!p || p.length !== 6) return p;
+        const meses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+        const mes = parseInt(p.slice(4), 10) - 1;
+        return `${meses[mes]} ${p.slice(0, 4)}`;
+    };
+
     useEffect(() => {
         fetch(LOCAL_DATA_URL)
             .then(res => res.text())
             .then(csv => {
                 const lines = csv.split(/\r?\n/);
-                // Saltar el header
                 const dataLines = lines.slice(1).filter(line => line.trim());
 
                 const parsed = dataLines.map(line => {
                     const cols = parseCSVLine(line);
-
-                    // Columnas según el CSV:
-                    // 0: ID Transaccion
-                    // 1: Fecha transaccion
-                    // 2: Fecha confirmacion
-                    // 3: Usuario
-                    // 4: Comercio
-                    // 5: Importe Total (con formato "30,000")
-                    // 6: Metodo de pago
-                    // 7: Estado transaccion
-                    // 8: Usuario normalizado
-                    // 9: Categoria normalizada
-                    // 10: Periodo normalizado
-
                     const usuario = cols[8] || cols[3] || 'Sin Usuario';
                     const importe = parseImporte(cols[5]);
                     const estado = cols[7] || '';
@@ -103,29 +96,30 @@ function App() {
                     };
                 }).filter(r => r.estado === 'CONFIRMADA' && r.usuario);
 
-                console.log('Datos parseados:', parsed.length, 'registros');
-                console.log('Ejemplo:', parsed[0]);
+                // Obtener período más reciente automáticamente
+                const periodos = [...new Set(parsed.map(r => r.periodo))].sort().reverse();
+                if (periodos.length > 0 && !mesSeleccionado) {
+                    setMesSeleccionado(periodos[0]);
+                }
+
+                console.log('Datos cargados:', parsed.length, 'registros confirmados');
                 setRawData(parsed);
                 setLoading(false);
             })
             .catch(err => {
-                console.error('Error:', err);
+                console.error('Error cargando datos:', err);
                 setLoading(false);
             });
     }, []);
 
-    // Periodos disponibles
     const periodosDisponibles = useMemo(() => {
-        const periodos = [...new Set(rawData.map(r => r.periodo))].sort().reverse();
-        return periodos;
+        return [...new Set(rawData.map(r => r.periodo))].sort().reverse();
     }, [rawData]);
 
-    // Datos filtrados por período
     const dataDelMes = useMemo(() => {
         return rawData.filter(r => r.periodo === mesSeleccionado);
     }, [rawData, mesSeleccionado]);
 
-    // Datos filtrados por búsqueda
     const dataFiltrada = useMemo(() => {
         if (!busqueda) return dataDelMes;
         return dataDelMes.filter(r =>
@@ -133,10 +127,8 @@ function App() {
         );
     }, [dataDelMes, busqueda]);
 
-    // Total del mes
     const totalMes = dataFiltrada.reduce((acc, r) => acc + r.importe, 0);
 
-    // Composición por categoría
     const composicion = useMemo(() => {
         const counts = dataFiltrada.reduce((acc, r) => {
             acc[r.categoria] = (acc[r.categoria] || 0) + r.importe;
@@ -145,7 +137,6 @@ function App() {
         return Object.entries(counts).sort((a, b) => b[1] - a[1]);
     }, [dataFiltrada]);
 
-    // Ranking de usuarios
     const rankingUsuarios = useMemo(() => {
         const porUsuario = dataFiltrada.reduce((acc, r) => {
             acc[r.usuario] = (acc[r.usuario] || 0) + r.importe;
@@ -158,214 +149,187 @@ function App() {
 
     if (loading) {
         return (
-            <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', background: '#f8fafc' }}>
-                <div style={{ textAlign: 'center' }}>
-                    <h2 style={{ color: '#1e3a8a' }}>Cargando datos reales...</h2>
-                    <p style={{ color: '#64748b' }}>Conectando con Google Sheets</p>
+            <div className="loading-screen">
+                <div className="loading-content">
+                    <div className="loading-spinner"></div>
+                    <h2>Cargando datos...</h2>
+                    <p>Sincronizando con Google Sheets</p>
                 </div>
             </div>
         );
     }
 
     return (
-        <div className="app-container" style={{ background: '#f8fafc' }}>
-            <main className="main-content">
-                <header className="page-header" style={{ textAlign: 'center', marginBottom: '1.5rem', marginTop: '1rem' }}>
-                    <h1 className="page-title" style={{ color: '#00BFFF', fontSize: '2.2rem', fontWeight: '900', letterSpacing: '2px', textTransform: 'uppercase', margin: 0 }}>
-                        DE CAMPO A CAMPO
-                    </h1>
-                    <p className="page-subtitle" style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '4px', fontWeight: '600' }}>Sincronizado con Google Sheets</p>
-                </header>
+        <div className="app-container">
+            <header className="app-header">
+                <h1 className="logo">DE CAMPO A CAMPO</h1>
+                <p className="subtitle">Dashboard de Gastos</p>
+            </header>
 
+            <main className="main-content">
                 {activeTab === 'tablero' && (
                     <>
                         {/* Filtros */}
-                        <section className="hero-card" style={{ padding: '1rem', marginBottom: '1rem' }}>
-                            <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                                <div style={{ flex: 1, minWidth: '150px' }}>
-                                    <label style={{ fontSize: '0.7rem', color: '#64748b', display: 'block', marginBottom: '4px' }}>PERÍODO</label>
-                                    <select
-                                        className="filter-select"
-                                        style={{ width: '100%' }}
-                                        value={mesSeleccionado}
-                                        onChange={e => setMesSeleccionado(e.target.value)}
-                                    >
-                                        {periodosDisponibles.map(p => (
-                                            <option key={p} value={p}>{p.slice(0, 4)}/{p.slice(4)}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                                <div style={{ flex: 2, minWidth: '200px' }}>
-                                    <label style={{ fontSize: '0.7rem', color: '#64748b', display: 'block', marginBottom: '4px' }}>BUSCAR PERSONA</label>
-                                    <input
-                                        className="filter-input"
-                                        style={{ width: '100%' }}
-                                        placeholder="Escribí un nombre..."
-                                        value={busqueda}
-                                        onChange={e => setBusqueda(e.target.value)}
-                                    />
+                        <div className="filters-card">
+                            <div className="filter-group">
+                                <label>Período</label>
+                                <select
+                                    value={mesSeleccionado}
+                                    onChange={e => setMesSeleccionado(e.target.value)}
+                                >
+                                    {periodosDisponibles.map(p => (
+                                        <option key={p} value={p}>{formatPeriodo(p)}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="filter-group search">
+                                <label>Buscar persona</label>
+                                <input
+                                    type="text"
+                                    placeholder="Escribí un nombre..."
+                                    value={busqueda}
+                                    onChange={e => setBusqueda(e.target.value)}
+                                />
+                            </div>
+                        </div>
+
+                        {/* Indicadores */}
+                        <div className="indicators-grid">
+                            <div className="indicator-card primary">
+                                <div className="indicator-icon">💰</div>
+                                <div className="indicator-content">
+                                    <span className="indicator-label">Total Confirmado</span>
+                                    <span className="indicator-value">{formatCurrency(totalMes)}</span>
+                                    <span className="indicator-detail">{dataFiltrada.length} transacciones</span>
                                 </div>
                             </div>
-                        </section>
-
-                        {/* Indicadores principales */}
-                        <div className="indicator-grid">
-                            <div className="indicator-card">
-                                <div className="indicator-header">
-                                    <span className="indicator-title">Total Confirmado</span>
-                                </div>
-                                <div className="indicator-value">{formatCurrency(totalMes)}</div>
-                                <div style={{ color: '#64748b', fontSize: '0.75rem' }}>
-                                    {dataFiltrada.length} transacciones
-                                </div>
-                            </div>
-
-                            <div className="indicator-card purple-border">
-                                <div className="indicator-header">
-                                    <span className="indicator-title">Usuarios Activos</span>
-                                </div>
-                                <div className="indicator-value">{rankingUsuarios.length}</div>
-                                <div style={{ color: '#64748b', fontSize: '0.75rem' }}>
-                                    Personas con gastos este mes
+                            <div className="indicator-card secondary">
+                                <div className="indicator-icon">👥</div>
+                                <div className="indicator-content">
+                                    <span className="indicator-label">Usuarios Activos</span>
+                                    <span className="indicator-value">{rankingUsuarios.length}</span>
+                                    <span className="indicator-detail">Personas con gastos</span>
                                 </div>
                             </div>
                         </div>
 
                         {/* Composición por Categoría */}
-                        <section className="hero-card">
-                            <h3 style={{ fontSize: '0.9rem', color: '#1e3a8a', fontWeight: '700', marginBottom: '1rem' }}>
-                                COMPOSICIÓN POR CATEGORÍA
-                            </h3>
-                            <div className="comp-bar">
+                        <div className="section-card">
+                            <h3 className="section-title">📊 Composición por Categoría</h3>
+                            <div className="composition-bar">
                                 {composicion.map(([cat, val]) => (
                                     <div
                                         key={cat}
-                                        className="comp-segment"
+                                        className="composition-segment"
                                         style={{
-                                            width: `${(val / totalMes) * 100}%`,
-                                            background: CATEGORY_COLORS[cat] || '#64748b'
+                                            width: `${Math.max((val / totalMes) * 100, 2)}%`,
+                                            background: CATEGORY_COLORS[cat] || '#6366f1'
                                         }}
                                         title={`${cat}: ${formatCurrency(val)}`}
                                     />
                                 ))}
                             </div>
-                            <div style={{ marginTop: '1.5rem' }}>
+                            <div className="category-list">
                                 {composicion.map(([cat, val]) => (
-                                    <div key={cat} style={{
-                                        display: 'flex',
-                                        justifyContent: 'space-between',
-                                        alignItems: 'center',
-                                        padding: '10px 0',
-                                        borderBottom: '1px solid #f1f5f9'
-                                    }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                            <div style={{
-                                                width: '12px',
-                                                height: '12px',
-                                                borderRadius: '3px',
-                                                background: CATEGORY_COLORS[cat] || '#64748b'
-                                            }} />
-                                            <span style={{ fontWeight: '600' }}>{cat}</span>
+                                    <div key={cat} className="category-item">
+                                        <div className="category-info">
+                                            <span
+                                                className="category-dot"
+                                                style={{ background: CATEGORY_COLORS[cat] || '#6366f1' }}
+                                            />
+                                            <span className="category-name">{cat}</span>
                                         </div>
-                                        <span style={{ fontWeight: '800' }}>{formatCurrency(val)}</span>
+                                        <span className="category-amount">{formatCurrency(val)}</span>
                                     </div>
                                 ))}
                             </div>
-                        </section>
+                        </div>
 
                         {/* Ranking de Usuarios */}
-                        <section className="hero-card" style={{ marginTop: '1.5rem' }}>
-                            <h3 style={{ fontSize: '0.9rem', color: '#1e3a8a', fontWeight: '700', marginBottom: '1rem' }}>
-                                RANKING DE GASTOS
-                            </h3>
-                            <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
-                                {rankingUsuarios.map((u, i) => (
-                                    <div key={i} style={{
-                                        display: 'flex',
-                                        justifyContent: 'space-between',
-                                        alignItems: 'center',
-                                        padding: '12px 0',
-                                        borderBottom: '1px solid #f1f5f9'
-                                    }}>
-                                        <div>
-                                            <span style={{
-                                                display: 'inline-block',
-                                                width: '28px',
-                                                fontWeight: '800',
-                                                color: i < 3 ? '#1e3a8a' : '#94a3b8'
-                                            }}>
-                                                #{i + 1}
-                                            </span>
-                                            <span style={{ fontWeight: '700' }}>{u.nombre}</span>
+                        <div className="section-card">
+                            <h3 className="section-title">🏆 Ranking de Gastos</h3>
+                            <div className="ranking-list">
+                                {rankingUsuarios.slice(0, 10).map((u, i) => (
+                                    <div key={i} className={`ranking-item ${i < 3 ? 'top-three' : ''}`}>
+                                        <div className="ranking-position">
+                                            {i < 3 ? ['🥇', '🥈', '🥉'][i] : `#${i + 1}`}
                                         </div>
-                                        <span style={{ fontWeight: '800', fontSize: '1.1rem' }}>{formatCurrency(u.total)}</span>
+                                        <div className="ranking-name">{u.nombre}</div>
+                                        <div className="ranking-amount">{formatCurrency(u.total)}</div>
                                     </div>
                                 ))}
                             </div>
-                        </section>
+                        </div>
                     </>
                 )}
 
                 {activeTab === 'alertas' && (
-                    <section className="hero-card">
-                        <h2 style={{ fontSize: '1.2rem', fontWeight: '800', marginBottom: '1rem' }}>Alertas de Desvío</h2>
-                        <div style={{ background: '#fef2f2', padding: '1rem', borderRadius: '12px', color: '#991b1b', fontSize: '0.85rem', fontWeight: '700', marginBottom: '1.5rem' }}>
-                            ⚠️ RANKING MAYORES GASTOS
+                    <div className="section-card">
+                        <h2 className="section-title">⚠️ Alertas de Gastos Elevados</h2>
+                        <p className="alert-description">Top 5 usuarios con mayor gasto en {formatPeriodo(mesSeleccionado)}</p>
+                        <div className="alert-list">
+                            {rankingUsuarios.slice(0, 5).map((u, i) => (
+                                <div key={i} className="alert-item">
+                                    <div className="alert-rank">#{i + 1}</div>
+                                    <div className="alert-info">
+                                        <span className="alert-name">{u.nombre}</span>
+                                        <span className="alert-amount">{formatCurrency(u.total)}</span>
+                                    </div>
+                                    <div className="alert-badge">Revisar</div>
+                                </div>
+                            ))}
                         </div>
-                        {rankingUsuarios.slice(0, 5).map((u, i) => (
-                            <div key={i} className="audit-item" style={{ marginBottom: '10px', borderRadius: '12px', boxShadow: '0 2px 5px rgba(0,0,0,0.05)' }}>
-                                <div>
-                                    <div style={{ fontWeight: '800' }}>#{i + 1} {u.nombre}</div>
-                                </div>
-                                <div style={{ textAlign: 'right' }}>
-                                    <div style={{ fontWeight: '800', fontSize: '1.1rem' }}>{formatCurrency(u.total)}</div>
-                                </div>
-                            </div>
-                        ))}
-                    </section>
+                    </div>
                 )}
 
                 {activeTab === 'auditoria' && (
-                    <section className="hero-card" style={{ padding: 0 }}>
-                        <div style={{ padding: '1.5rem', borderBottom: '1px solid #f1f5f9' }}>
-                            <h2 style={{ fontSize: '1.2rem', fontWeight: '800' }}>Auditoría de Transacciones</h2>
-                            <p style={{ color: '#64748b', fontSize: '0.8rem' }}>{dataFiltrada.length} transacciones en {mesSeleccionado}</p>
+                    <div className="section-card audit-section">
+                        <div className="audit-header">
+                            <h2 className="section-title">📋 Auditoría de Transacciones</h2>
+                            <span className="audit-count">{dataFiltrada.length} registros</span>
                         </div>
-                        <div style={{ maxHeight: '600px', overflowY: 'auto' }}>
-                            {dataFiltrada.map((r, i) => (
+                        <div className="audit-list">
+                            {dataFiltrada.slice(0, 50).map((r, i) => (
                                 <div key={i} className="audit-item">
-                                    <div className="audit-info">
-                                        <h4>{r.comercio || 'Sin comercio'}</h4>
-                                        <div className="audit-meta">{r.fecha} • {r.usuario}</div>
-                                        <div style={{ marginTop: '4px' }}>
-                                            <span className="tag-card">{r.metodo}</span>
-                                            <span className="tag-card" style={{ marginLeft: '4px' }}>{r.categoria}</span>
-                                        </div>
+                                    <div className="audit-main">
+                                        <span className="audit-comercio">{r.comercio || 'Sin comercio'}</span>
+                                        <span className="audit-amount">{formatCurrency(r.importe)}</span>
                                     </div>
-                                    <div style={{ textAlign: 'right' }}>
-                                        <div style={{ fontSize: '1.1rem', fontWeight: '800' }}>{formatCurrency(r.importe)}</div>
-                                        <div style={{ color: '#22c55e', fontSize: '0.7rem', fontWeight: '700' }}>CONFIRMADA</div>
+                                    <div className="audit-details">
+                                        <span>{r.fecha}</span>
+                                        <span>•</span>
+                                        <span>{r.usuario}</span>
+                                        <span>•</span>
+                                        <span className="audit-tag">{r.categoria}</span>
                                     </div>
                                 </div>
                             ))}
                         </div>
-                    </section>
+                    </div>
                 )}
-
             </main>
 
             <nav className="bottom-nav">
-                <button className={`nav-btn ${activeTab === 'tablero' ? 'active' : ''}`} onClick={() => setActiveTab('tablero')}>
-                    <span className="nav-icon-large">🏠</span>
-                    Tablero
+                <button
+                    className={`nav-btn ${activeTab === 'tablero' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('tablero')}
+                >
+                    <span className="nav-icon">📊</span>
+                    <span>Tablero</span>
                 </button>
-                <button className={`nav-btn ${activeTab === 'alertas' ? 'active' : ''}`} onClick={() => setActiveTab('alertas')}>
-                    <span className="nav-icon-large">🔔</span>
-                    Alertas
+                <button
+                    className={`nav-btn ${activeTab === 'alertas' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('alertas')}
+                >
+                    <span className="nav-icon">🔔</span>
+                    <span>Alertas</span>
                 </button>
-                <button className={`nav-btn ${activeTab === 'auditoria' ? 'active' : ''}`} onClick={() => setActiveTab('auditoria')}>
-                    <span className="nav-icon-large">📋</span>
-                    Auditoría
+                <button
+                    className={`nav-btn ${activeTab === 'auditoria' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('auditoria')}
+                >
+                    <span className="nav-icon">📋</span>
+                    <span>Auditoría</span>
                 </button>
             </nav>
         </div>

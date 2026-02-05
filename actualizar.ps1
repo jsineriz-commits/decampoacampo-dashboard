@@ -4,7 +4,7 @@ $GIT_PATH = "C:\Program Files\Git\cmd\git.exe"
 
 # 1. Descargar datos nuevos
 Write-Host "--- Descargando datos desde Google Sheets ---" -ForegroundColor Cyan
-& $NODE_PATH descargar-datos.js
+& $NODE_PATH descargar-datos.cjs
 
 # 2. Subir cambios a GitHub/Vercel
 Write-Host "--- Subiendo cambios a Vercel ---" -ForegroundColor Cyan
